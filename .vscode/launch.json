@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Run Saving Favorite",
+            "request": "launch",
+            "mainClass": "jp.co.savingfavorite.SharedProjectApplication",
+            "projectName": "saving-favorite"
+        }
+    ]
+}
