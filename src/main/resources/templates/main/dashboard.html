@@ -751,6 +751,17 @@
             </div>
             <div id="item-edit-content"></div>
         </dialog>
+        <dialog id="bulk-dialog" aria-labelledby="bulk-title">
+            <div class="panel-heading"><h2 id="bulk-title">選択した商品を登録</h2><button type="button" class="quiet" id="bulk-close">閉じる</button></div>
+            <form id="bulk-form">
+                <div class="bulk-scroll">
+                    <label>登録する推し<select id="bulk-favorite" required></select></label>
+                    <p class="muted">各商品のカテゴリ・金額・数量・日付を確認してください。</p>
+                    <div id="bulk-products"></div>
+                </div>
+                <div class="bulk-footer"><p id="bulk-error" class="form-error" role="alert"></p><button type="submit" id="bulk-submit">まとめて登録</button></div>
+            </form>
+        </dialog>
         <dialog id="metadata-dialog" aria-labelledby="metadata-title">
             <div class="panel-heading">
                 <h2 id="metadata-title">商品を選択</h2>
@@ -759,8 +770,9 @@
             <p class="muted">取得した商品情報から入力する商品を選択してください。</p>
             <p id="metadata-result-count" class="metadata-result-count" aria-live="polite"></p>
             <div id="metadata-products"></div>
-            <div class="form-actions">
-                <button type="button" id="metadata-register-selected">選択した商品を登録</button>
+            <div class="form-actions metadata-dialog-actions">
+                <button type="button" class="quiet" id="metadata-register-back" hidden>選択に戻る</button>
+                <button type="button" id="metadata-register-selected" disabled>選択した商品を登録</button>
             </div>
         </dialog>
     </body>

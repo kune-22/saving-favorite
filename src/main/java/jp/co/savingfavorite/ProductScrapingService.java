@@ -6,6 +6,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
@@ -15,10 +19,14 @@ import org.springframework.stereotype.Service;
 public class ProductScrapingService {
     private static final Pattern MORE = Pattern.compile("class=\\\"[^\\\"]*js-show-more-ajax[^\\\"]*\\\"[^>]*data-url=\\\"([^\\\"]+)\\\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern TOTAL = Pattern.compile("全\\s*([0-9,]+)\\s*件");
+    private static final String USER_AGENT = "SavingFavorite/1.0 (+public-product-metadata)";
+    private final Map<String, RobotsRules> robotsCache = new ConcurrentHashMap<>();
+
     public String fetchHtml(URI uri) throws Exception {
+        if (!isAllowedByRobots(uri)) throw new IllegalStateException("このサイトは自動取得を許可していません。");
         HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(5)).build();
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(8))
-                .header("User-Agent", "SavingFavorite/1.0 (+public-product-metadata)")
+                .header("User-Agent", USER_AGENT)
                 .header("Accept", "text/html,application/xhtml+xml").GET().build();
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         if (response.statusCode() < 200 || response.statusCode() >= 300
@@ -27,6 +35,60 @@ public class ProductScrapingService {
         }
         if (response.body().length() > 1_500_000) throw new IllegalStateException("ページが大きすぎるため取得できません。");
         return response.body();
+    }
+
+    /** robots.txt の明示的な拒否だけを尊重する。取得不能時はサイトを壊さないため許可する。 */
+    private boolean isAllowedByRobots(URI uri) {
+        String hostKey = uri.getScheme().toLowerCase() + "://" + uri.getAuthority().toLowerCase();
+        RobotsRules rules = robotsCache.computeIfAbsent(hostKey, key -> loadRobots(uri));
+        return rules.allows(uri.getRawPath().isBlank() ? "/" : uri.getRawPath());
+    }
+
+    private RobotsRules loadRobots(URI uri) {
+        try {
+            URI robotsUri = URI.create(uri.getScheme() + "://" + uri.getAuthority() + "/robots.txt");
+            HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
+                    .connectTimeout(Duration.ofSeconds(3)).build();
+            HttpRequest request = HttpRequest.newBuilder(robotsUri).timeout(Duration.ofSeconds(5))
+                    .header("User-Agent", USER_AGENT).header("Accept", "text/plain").GET().build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() == 404 || response.statusCode() < 200 || response.statusCode() >= 300) return RobotsRules.ALLOW_ALL;
+            return RobotsRules.parse(response.body());
+        } catch (Exception ignored) {
+            return RobotsRules.ALLOW_ALL;
+        }
+    }
+
+    private record RobotsRules(List<String> disallow, List<String> allow) {
+        private static final RobotsRules ALLOW_ALL = new RobotsRules(List.of(), List.of());
+
+        static RobotsRules parse(String body) {
+            List<String> disallow = new ArrayList<>();
+            List<String> allow = new ArrayList<>();
+            boolean applies = false;
+            boolean sawAgent = false;
+            for (String raw : body.split("\\R")) {
+                String line = raw.split("#", 2)[0].trim();
+                if (line.isEmpty()) continue;
+                int colon = line.indexOf(':');
+                if (colon < 0) continue;
+                String field = line.substring(0, colon).trim().toLowerCase();
+                String value = line.substring(colon + 1).trim();
+                if (field.equals("user-agent")) {
+                    if (sawAgent) { applies = false; disallow.clear(); allow.clear(); }
+                    sawAgent = true;
+                    applies = value.equals("*") || value.toLowerCase().contains("savingfavorite");
+                } else if (applies && field.equals("disallow") && !value.isEmpty()) disallow.add(value);
+                else if (applies && field.equals("allow") && !value.isEmpty()) allow.add(value);
+            }
+            return new RobotsRules(List.copyOf(disallow), List.copyOf(allow));
+        }
+
+        boolean allows(String path) {
+            String matchedAllow = allow.stream().filter(path::startsWith).max((a, b) -> Integer.compare(a.length(), b.length())).orElse("");
+            String matchedDisallow = disallow.stream().filter(path::startsWith).max((a, b) -> Integer.compare(a.length(), b.length())).orElse("");
+            return matchedAllow.length() >= matchedDisallow.length();
+        }
     }
 
     /** 一覧ページの公開「もっと見る」URLを同一ホスト内で順に取得する。 */

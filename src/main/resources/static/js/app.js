@@ -240,11 +240,40 @@
     const metadataDialog = $('#metadata-dialog');
     let metadataTargetForm = null;
     let selectedMetadataIndexes = new Set();
+    let metadataMode = 'select';
+    let metadataDrafts = [];
     function updateMetadataSelectionSummary(total) {
         const box=$('#metadata-result-count');
         if (box) box.textContent=`${total}件の商品を取得しました。${selectedMetadataIndexes.size ? ` ${selectedMetadataIndexes.size}件を選択中` : ' 商品を選択してください。'}`;
         const submit=$('#metadata-register-selected');
         if (submit) submit.disabled=selectedMetadataIndexes.size===0;
+    }
+    function renderMetadataEditors() {
+        const categories = [...$('#category-options').options].map(option => option.value);
+        $('#bulk-favorite').innerHTML = '<option value="">推しを選んでください</option>' + data.favorites.map(f => '<option value="'+f.id+'">'+esc(f.name)+'</option>').join('');
+        $('#bulk-favorite').value = metadataTargetForm.elements.favoriteId.value;
+        $('#bulk-products').innerHTML = metadataDrafts.map((p,index) => {
+            const field = (name, label, type, value, extra='') => '<label>'+label+'<input data-bulk-field="'+name+'" type="'+type+'" value="'+esc(String(value ?? ''))+'" '+extra+' required></label>';
+            return '<article class="metadata-edit-card" data-bulk-index="'+index+'">'+(p.imageUrl ? '<img src="'+esc(p.imageUrl)+'" alt="">' : '<div></div>')+'<div class="metadata-edit-fields">'+
+                field('name','商品名','text',p.name,'maxlength="100"')+
+                '<label>カテゴリ<select data-bulk-field="category" required><option value="">カテゴリを選択</option>'+categories.map(c => '<option '+(c===p.category?'selected':'')+' value="'+esc(c)+'">'+esc(c)+'</option>').join('')+'</select></label>'+
+                '<div class="metadata-edit-row">'+field('price','単価（円）','number',p.price,'min="0" max="99999999" step="0.01"')+field('quantity','数量','number',p.quantity,'min="1" max="9999"')+'</div>'+
+                field('purchasedDate','購入日・購入予定日','date',p.purchasedDate || today())+
+                (p.status==='OWNED' ? '<input data-bulk-field="status" type="hidden" value="OWNED">' : '<label>状態<select data-bulk-field="status"><option value="PLANNED">購入予定（サブスク等含）</option><option value="PAID" '+(p.status==='PAID'?'selected':'')+'>購入済（サブスク等含）</option></select></label>')+'</div></article>';
+        }).join('');
+        $('#bulk-error').textContent = '';
+        metadataDialog.close();
+        $('#bulk-dialog').showModal();
+        $('#bulk-dialog .bulk-scroll').scrollTop = 0;
+        $('#bulk-favorite').focus();
+    }
+    function returnToMetadataSelection() {
+        metadataMode='select';
+        $('#metadata-title').textContent='商品を選択';
+        $('#metadata-register-back').hidden=true;
+        $('#metadata-register-selected').textContent='選択した商品を登録';
+        $('#metadata-products').innerHTML=(metadataTargetForm?.__metadataProducts || []).map((p,index)=>`<button type="button" class="metadata-card${selectedMetadataIndexes.has(index) ? ' selected' : ''}" data-metadata-index="${index}" aria-pressed="${selectedMetadataIndexes.has(index)}">${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="">` : ''}<span><strong>${esc(p.name)}</strong><small>${p.price == null ? '価格未取得' : yen(p.price)}</small></span></button>`).join('');
+        updateMetadataSelectionSummary((metadataTargetForm?.__metadataProducts || []).length);
     }
     function applyMetadata(form, product) {
         if (!product) return;
@@ -267,7 +296,7 @@
             const countBox=$('#metadata-result-count');
             if (countBox) countBox.textContent=`${products.length}件の商品情報を取得しました。`;
             if (products.length===1 && !listMode) applyMetadata(form,products[0]);
-            else { form.__metadataProducts=products; selectedMetadataIndexes=new Set(); $('#metadata-products').innerHTML=products.map((p,index)=>`<button type="button" class="metadata-card" data-metadata-index="${index}" aria-pressed="false">${p.imageUrl ? `<img src="${esc(p.imageUrl)}" alt="">` : ''}<span><strong>${esc(p.name)}</strong><small>${p.price == null ? '価格未取得' : yen(p.price)}</small></span></button>`).join(''); updateMetadataSelectionSummary(products.length); metadataDialog.showModal(); }
+            else { form.__metadataProducts=products; selectedMetadataIndexes=new Set(); metadataMode='select'; returnToMetadataSelection(); metadataDialog.showModal(); }
             if (errorBox) errorBox.textContent='';
         } catch(error) { if (errorBox) errorBox.textContent=error.message; }
         finally { button.disabled=false; }
@@ -275,16 +304,59 @@
     $$('[data-fetch-metadata]').forEach(button=>button.addEventListener('click',()=>fetchMetadata(button)));
     $$('[data-fetch-metadata-list]').forEach(button=>button.addEventListener('click',()=>fetchMetadata(button,true)));
     $('#metadata-cancel').addEventListener('click',()=>metadataDialog.close());
+    $('#metadata-register-back').addEventListener('click',returnToMetadataSelection);
     $('#metadata-products').addEventListener('click',e=>{ const card=e.target.closest('[data-metadata-index]'); if(!card || !metadataTargetForm)return; const index=Number(card.dataset.metadataIndex); if(selectedMetadataIndexes.has(index)) selectedMetadataIndexes.delete(index); else selectedMetadataIndexes.add(index); card.classList.toggle('selected',selectedMetadataIndexes.has(index)); card.setAttribute('aria-pressed',selectedMetadataIndexes.has(index)); updateMetadataSelectionSummary((metadataTargetForm.__metadataProducts || []).length); });
-    $('#metadata-register-selected').addEventListener('click',async()=>{
+    $('#metadata-register-selected').addEventListener('click', () => {
         if (!metadataTargetForm || !selectedMetadataIndexes.size) return;
-        const form=metadataTargetForm, products=form.__metadataProducts || [], base=Object.fromEntries(new FormData(form)); delete base.id; delete base.imageFile;
-        base.favoriteId=base.favoriteId ? Number(base.favoriteId) : null; base.quantity=Number(base.quantity || 1); base.price=Number(base.price || 0); base.deadline=base.deadline || null; base.membershipJoinedDate=base.membershipJoinedDate || null;
-        const submit=$('#metadata-register-selected'); submit.disabled=true;
-        try { for (const index of selectedMetadataIndexes) { const p=products[index]; await api('items','POST',{...base,name:p.name,category:p.category || base.category,price:Number(p.price || 0),imageUrl:p.imageUrl || base.imageUrl || null}); } metadataDialog.close(); await refresh(); announce(`${selectedMetadataIndexes.size}件の商品を登録しました。`); }
-        catch(error) { const box=$('#metadata-result-count'); if(box) box.textContent=error.message; submit.disabled=false; }
+        const base = Object.fromEntries(new FormData(metadataTargetForm));
+        delete base.id;
+        delete base.imageFile;
+        metadataDrafts = [...selectedMetadataIndexes].map(index => {
+            const p = metadataTargetForm.__metadataProducts[index];
+            return {...base, name:p.name, category:p.category || base.category, price:p.price,
+                quantity:Number(base.quantity || 1), recurrence:base.recurrence || 'NONE',
+                purchasedDate:base.purchasedDate || today(), deadline:base.deadline || null,
+                membershipJoinedDate:base.membershipJoinedDate || null, imageUrl:p.imageUrl || null};
+        });
+        renderMetadataEditors();
     });
-    $$('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{ if (event.target === dialog) dialog.close(); }));
+    let bulkSaving = false;
+    $('#bulk-close').addEventListener('click', () => { if (!bulkSaving) $('#bulk-dialog').close(); });
+    $('#bulk-dialog').addEventListener('cancel', event => { if (bulkSaving) event.preventDefault(); });
+    $('#bulk-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (bulkSaving || !$('#bulk-form').reportValidity()) return;
+        bulkSaving = true;
+        $('#bulk-submit').disabled = true;
+        $('#bulk-close').disabled = true;
+        $('#bulk-error').textContent = '';
+        const cards = [...$('#bulk-products').querySelectorAll('[data-bulk-index]')];
+        let saved = 0;
+        try {
+            for (const card of cards) {
+                const input = {...metadataDrafts[Number(card.dataset.bulkIndex)]};
+                card.querySelectorAll('[data-bulk-field]').forEach(field => input[field.dataset.bulkField] = field.value.trim());
+                input.favoriteId = Number($('#bulk-favorite').value);
+                input.price = Number(input.price);
+                input.quantity = Number(input.quantity);
+                await api('items', 'POST', input);
+                saved++;
+                card.remove();
+            }
+            $('#bulk-dialog').close();
+            announce(saved+'件の商品を登録しました。');
+        } catch (error) {
+            $('#bulk-error').textContent = saved+'件登録済み。残りの商品を確認して再度登録してください。'+error.message;
+        } finally {
+            bulkSaving = false;
+            $('#bulk-submit').disabled = false;
+            $('#bulk-close').disabled = false;
+            if (saved) {
+                try { await refresh(); } catch (error) { announce('保存済みですが一覧の更新に失敗しました。再読み込みしてください。', true); }
+            }
+        }
+    });
+    $$('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{ if (event.target === dialog && !(dialog.id === 'bulk-dialog' && bulkSaving)) dialog.close(); }));
     $('#enable-notifications').addEventListener('click',async()=>{
         if(!('Notification' in window)) return announce('このブラウザーは通知に対応していません。アプリ内のお知らせをご利用ください。',true);
         const permission=await Notification.requestPermission(); announce(permission==='granted'?'ブラウザー通知を有効にしました。':'ブラウザー通知は許可されていません。アプリ内のお知らせをご利用ください。'); renderNotifications();
