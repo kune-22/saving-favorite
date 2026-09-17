@@ -14,7 +14,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** ユーザーが応援している推し。 */
 @Entity
 @Table(name = "favorites")
 public class Favorite {
@@ -24,7 +23,11 @@ public class Favorite {
 
     private String name;
     private String description;
+    @jakarta.persistence.Lob
+    @jakarta.persistence.Column(columnDefinition = "CLOB")
     private String imageUrl;
+    private java.math.BigDecimal monthlyBudget;
+    private Integer imageSize = 56;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
@@ -46,6 +49,10 @@ public class Favorite {
     }
 
     public Long getId() { return id; }
+    public java.math.BigDecimal getMonthlyBudget() { return monthlyBudget; }
+    public void setMonthlyBudget(java.math.BigDecimal value) { monthlyBudget = value; }
+    public Integer getImageSize() { return imageSize; }
+    public void setImageSize(Integer value) { imageSize = value; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }

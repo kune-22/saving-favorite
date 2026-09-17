@@ -27,4 +27,15 @@ public class UserService {
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email.trim().toLowerCase(Locale.ROOT));
     }
+
+    public User findByEmail(String email) {
+        return userRepository.findByEmail(email.trim().toLowerCase(Locale.ROOT)).orElseThrow();
+    }
+
+    @Transactional
+    public void addFavorite(String email, String name) {
+        User user = findByEmail(email);
+        user.addFavorite(new Favorite(name, "", null));
+        userRepository.save(user);
+    }
 }
