@@ -1,6 +1,5 @@
 package jp.co.savingfavorite;
 
-/** トップページのユーザー登録フォーム。 */
 public class UserRegistrationForm {
     private String name;
     private String email;

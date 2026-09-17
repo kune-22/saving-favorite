@@ -25,6 +25,7 @@ replay_pid*
 
 # Maven / IDE
 target/
+data/
 .idea/
 *.iml
 .classpath

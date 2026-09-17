@@ -17,24 +17,63 @@ public class MainController {
         this.userService = userService;
     }
 
-    @GetMapping("/")
-    public String index(@RequestParam(required = false) String registered, Model model) {
-        model.addAttribute("registrationForm", new UserRegistrationForm());
-        model.addAttribute("registered", registered != null);
+    @GetMapping({"/", "/home", "/schedule", "/money", "/purchases", "/favorites", "/favorite-new", "/inventory", "/account"})
+    public String index(java.security.Principal principal, Model model) {
+        if (principal != null) {
+            model.addAttribute("account", userService.findByEmail(principal.getName()));
+            return "main/dashboard";
+        }
+        model.addAttribute("loggedIn", principal != null);
         return "main/index";
     }
 
+    @GetMapping("/register")
+    public String registration(@RequestParam(required = false) String registered,
+            @RequestParam(defaultValue = "register") String mode, Model model,
+            java.security.Principal principal) {
+        if (principal != null) {
+            return "redirect:/";
+        }
+        model.addAttribute("registrationForm", new UserRegistrationForm());
+        model.addAttribute("registered", registered != null);
+        model.addAttribute("loginMode", "login".equals(mode) || registered != null);
+        return "main/register";
+    }
+
     @PostMapping("/register")
-    public String register(@ModelAttribute UserRegistrationForm form, Model model) {
+    public String register(@ModelAttribute UserRegistrationForm form, Model model,
+            jakarta.servlet.http.HttpServletRequest request) throws jakarta.servlet.ServletException {
+        if (request.getUserPrincipal() != null) {
+            return "redirect:/";
+        }
         String error = validate(form);
         if (error != null) {
+            form.setPassword(null);
+            form.setPasswordConfirmation(null);
             model.addAttribute("registrationForm", form);
             model.addAttribute("registrationError", error);
-            return "main/index";
+            model.addAttribute("loginMode", false);
+            return "main/register";
         }
 
         userService.register(form);
-        return "redirect:/?registered=true";
+        if (request.getSession(false) != null) {
+            request.changeSessionId();
+        }
+        request.login(form.getEmail().trim().toLowerCase(java.util.Locale.ROOT), form.getPassword());
+        return "redirect:/";
+    }
+
+    @PostMapping("/favorites")
+    public String addFavorite(@RequestParam String name,
+            java.security.Principal principal,
+            org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
+        if (isBlank(name) || name.trim().length() > 50) {
+            redirect.addFlashAttribute("favoriteError", "推しの名前を1〜50文字で入力してください。");
+        } else {
+            userService.addFavorite(principal.getName(), name.trim());
+        }
+        return "redirect:/#favorites";
     }
 
     private String validate(UserRegistrationForm form) {

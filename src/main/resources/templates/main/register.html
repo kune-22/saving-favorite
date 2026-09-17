@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>
+            ログイン・新規登録 | Saving Favorite
+        </title>
+        <link rel="stylesheet" href="/css/site.css" th:href="@{/css/site.css}">
+    </head>
+    <body>
+        <header>
+            <h1 class="brand-logo">
+                <a href="/" th:href="@{/}">
+                    Saving Favorite
+                </a>
+            </h1>
+            <nav aria-label="メインナビゲーション">
+                <a href="/" th:href="@{/}">
+                    TOPへ
+                </a>
+            </nav>
+        </header>
+        <main class="registration">
+            <a class="back-link" href="/" th:href="@{/}">
+                ← TOPページへ戻る
+            </a>
+            <section class="card">
+                <nav class="auth-switch" aria-label="アカウントメニュー">
+                    <a th:href="@{/register(mode='login')}" th:classappend="${loginMode} ? 'active'" th:attr="aria-current=${loginMode} ? 'page' : null">
+                        ログイン
+                    </a>
+                    <a th:href="@{/register}" th:classappend="${!loginMode} ? 'active'" th:attr="aria-current=${!loginMode} ? 'page' : null">
+                        新規登録
+                    </a>
+                </nav>
+                <div th:if="${loginMode}">
+                    <h2>
+                        ログイン
+                    </h2>
+                    <p>
+                        登録したメールアドレスとパスワードを入力してください。
+                    </p>
+                    <p th:if="${registered}" class="message" role="status">
+                        登録が完了しました。
+                    </p>
+                    <p th:if="${param.logout}" class="message" role="status">
+                        ログアウトしました。
+                    </p>
+                    <p th:if="${param.error}" class="error" role="alert">
+                        メールアドレスまたはパスワードが正しくありません。
+                    </p>
+                    <form th:action="@{/login}" method="post">
+                        <label for="login-email">
+                            メールアドレス
+                        </label>
+                        <input id="login-email" name="email" type="email" required maxlength="255" autocomplete="username">
+                        <label for="login-password">
+                            パスワード
+                        </label>
+                        <input id="login-password" name="password" type="password" required autocomplete="current-password">
+                        <button type="submit">
+                            ログイン
+                        </button>
+                    </form>
+                </div>
+                <div th:unless="${loginMode}">
+                    <h2>
+                        新規登録
+                    </h2>
+                    <p>
+                        アカウントを作成すると、そのまま推し活の記録をはじめられます。
+                    </p>
+                    <p th:if="${registered}" class="message" role="status">
+                        登録が完了しました。
+                    </p>
+                    <p th:if="${registrationError}" class="error" role="alert" th:text="${registrationError}">
+                    </p>
+                    <form action="/register" th:action="@{/register}" method="post" th:object="${registrationForm}">
+                        <label for="name">
+                            ユーザー名
+                        </label>
+                        <input id="name" type="text" th:field="*{name}" required maxlength="50" autocomplete="name">
+                        <label for="email">
+                            メールアドレス
+                        </label>
+                        <input id="email" type="email" th:field="*{email}" required maxlength="255" autocomplete="email">
+                        <label for="password">
+                            パスワード
+                        </label>
+                        <input id="password" type="password" th:field="*{password}" required minlength="8" autocomplete="new-password">
+                        <label for="passwordConfirmation">
+                            パスワード（確認）
+                        </label>
+                        <input id="passwordConfirmation" type="password" th:field="*{passwordConfirmation}" required minlength="8" autocomplete="new-password">
+                        <button type="submit">
+                            アカウントを作成
+                        </button>
+                    </form>
+                    <p class="note">
+                        ※プロフィールアイコンは、登録後に設定できます。
+                    </p>
+                </div>
+            </section>
+        </main>
+    </body>
+</html>

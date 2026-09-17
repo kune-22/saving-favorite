@@ -22,8 +22,13 @@ public class User {
     private String name;
     private String email;
 
-    // パスワードそのものではなく、ハッシュ値を保存する想定です。
     private String passwordHash;
+
+    @jakarta.persistence.Lob
+    @jakarta.persistence.Column(columnDefinition = "CLOB")
+    private String imageUrl;
+    private Integer imageSize = 44;
+    private java.math.BigDecimal cash = java.math.BigDecimal.ZERO;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -46,6 +51,12 @@ public class User {
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
     public String getPasswordHash() { return passwordHash; }
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    public Integer getImageSize() { return imageSize; }
+    public void setImageSize(Integer imageSize) { this.imageSize = imageSize; }
+    public java.math.BigDecimal getCash() { return cash == null ? java.math.BigDecimal.ZERO : cash; }
+    public void setCash(java.math.BigDecimal cash) { this.cash = cash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
