@@ -38,6 +38,11 @@ __その他__<br>
 [Spring Boot](https://marketplace.visualstudio.com/items?itemName=vmware.vscode-spring-boot)をインストールして実行すると起動します。
 ログインしないとアプリは使用できません。
 
+起動方法
+[Spring Boot](https://marketplace.visualstudio.com/items?itemName=vmware.vscode-spring-boot)をインストール
+どこでも良いので[java拡張子]ファイルを開いて右上の▷をクリック
+[localhost:8080](http://localhost:8080/)をwebブラウザに直打ち(このリンクから開いてもいけると思います。)
+
 ### 補足と注意
 当アプリはURLからの情報取得方法にスクレイピングを使用しております。お使いになるリンク先のページの利用規約を確認した上で使用すること、短スパンでのアクセスはURL先のサーバーに対して高負荷をかける原因になります。また、リンクを使用して保存された画像は保存できないようになっておりますが、グレーゾーンの範疇故後々修正させていただきます。
 クローラーを使用して規約に従いスクレイピングを行っている上での注意です。
