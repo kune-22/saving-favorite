@@ -95,6 +95,12 @@ public class ProductScrapingService {
     public String fetchListingHtml(URI base, String initial) throws Exception {
         int initialCards = countCards(initial);
 
+        // Shopifyのトップ・コレクションページは ?page=2 形式で一覧を続ける。
+        if ((initial.contains("product-card-wrapper") || initial.contains("card__heading"))
+                && (base.getPath() == null || !base.getPath().contains("/products/"))) {
+            return fetchShopifyPages(base, initial);
+        }
+
         // If a user pastes a later /search page (for example pageNo=11),
         // restart at page 1 so the selector can still choose from the full
         // catalog rather than only the final 12 products.
@@ -179,6 +185,25 @@ public class ProductScrapingService {
             all.append(fetched);
             current = fetched;
             currentUri = next;
+        }
+        return all.toString();
+    }
+
+    private String fetchShopifyPages(URI base, String initial) throws Exception {
+        StringBuilder all = new StringBuilder(initial);
+        String previous = initial;
+        String separator = base.getQuery() == null ? "?" : "&";
+        for (int page = 2; page <= 100; page++) {
+            URI next = URI.create(base + separator + "page=" + page);
+            String fetched;
+            try {
+                fetched = fetchHtml(next);
+            } catch (Exception ignored) {
+                break;
+            }
+            if (fetched.isBlank() || fetched.equals(previous) || !fetched.contains("product-card-wrapper")) break;
+            all.append(fetched);
+            previous = fetched;
         }
         return all.toString();
     }

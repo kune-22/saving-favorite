@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>金銭管理 | Saving Favorite</title>
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="app-body">
+<section th:fragment="content" data-screen="money" hidden>
+                    <div class="page-heading">
+                        <div>
+                            <p class="eyebrow">
+                                MONEY NOTE
+                            </p>
+                            <h1>
+                                金銭管理
+                            </h1>
+                            <p class="muted">
+                                グッズも会費も、推しごとに見えるお買い物ノート。
+                            </p>
+                        </div>
+                        <label class="month-filter">
+                            集計する月
+                            <input id="money-month" type="month">
+                        </label>
+                    </div>
+                    <div id="money-stats" class="stats-grid">
+                    </div>
+                    <section class="panel">
+                        <h2>
+                            推しごとの支出
+                        </h2>
+                        <div id="money-breakdown">
+                        </div>
+                        <p class="muted">
+                            定期支払いは登録日から毎月・毎年の同日に計上します。月末を超える日はその月の末日になります。所持グッズは購入済みの支出として集計します。
+                        </p>
+                    </section>
+                    <div class="editor-grid">
+                        <section class="panel">
+                            <h2 id="money-form-title">
+                                支出・購入予定を登録
+                            </h2>
+                            <form id="money-form" data-item-form data-direct-image>
+                                <input type="hidden" name="id">
+                                <label>
+                                    ストア・商品ページのURL（任意）
+                                    <input name="storeUrl" type="url" maxlength="2048" placeholder="https://...">
+                                    <button type="button" class="quiet metadata-fetch" data-fetch-metadata>URLから情報を自動入力</button>
+                                    <button type="button" class="quiet metadata-fetch" data-fetch-metadata-list>一覧ページからグッズを選択</button>
+                                    <p class="metadata-error" data-metadata-error role="alert"></p>
+                                </label>
+                                <p class="muted">
+                                    ※ストアのトップページではなく、個別の商品ページURLを入力してください。リンクを保存して商品ページをすぐに開けます。
+                                </p>
+                                <p class="muted scraping-note">
+                                    ※公開ページのみ対応しています。JavaScriptで表示される商品情報も取得を試みますが、ログイン必須・CAPTCHA・Cloudflare等で保護されたページは取得できません。サイトの利用規約とアクセス制限に従ってください。
+                                </p>
+                                <label>
+                                    推し
+                                    <select name="favoriteId" data-favorite-select required>
+                                    </select>
+                                </label>
+                                <label>
+                                    グッズ・支払いの名前
+                                    <input name="name" required maxlength="100" placeholder="アクリルスタンド、メンバーシップなど">
+                                </label>
+                                <label>
+                                    カテゴリ
+                                    <input name="category" list="category-options" required maxlength="40" placeholder="グッズ、会費など">
+                                </label>
+                                <label>
+                                    商品画像
+                                    <input class="image-upload-input" aria-label="グッズの画像を上げる" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                                    <small class="muted">
+                                        登録した画像は金銭管理の一覧で表示されます（2MB以下）。
+                                    </small>
+                                    <img class="image-preview" data-preview alt="商品画像プレビュー" hidden>
+                                    <button type="button" class="quiet image-adjust-button" data-adjust-image hidden>画像を微調整</button>
+                                </label>
+                                <input type="hidden" name="imageUrl">
+                                <div class="field-row">
+                                    <label>
+                                        単価（円）
+                                        <input name="price" type="number" min="0" max="99999999" step="0.01" required>
+                                    </label>
+                                    <label>
+                                        数量
+                                        <input name="quantity" type="number" min="1" max="9999" value="1" required>
+                                    </label>
+                                </div>
+                                <label>
+                                    状態
+                                    <select name="status">
+                                        <option value="PLANNED">
+                                            購入予定（サブスク等含）
+                                        </option>
+                                        <option value="PAID">
+                                            購入済（サブスク等含）
+                                        </option>
+                                    </select>
+                                </label>
+                                <div class="field-row">
+                                    <label data-purchase-date-label>
+                                        購入日・支払開始日
+                                        <input name="purchasedDate" type="date" required>
+                                    </label>
+                                    <label>
+                                        購入期限（任意）
+                                        <input name="deadline" type="date">
+                                    </label>
+                                </div>
+                                <input name="membershipJoinedDate" type="hidden">
+                                <p class="muted" data-membership-hint hidden>
+                                    入会日を基準に、翌月の同日を次回支払日として自動登録します。
+                                    <output data-next-payment>
+                                    </output>
+                                </p>
+                                <label>
+                                    繰り返し
+                                    <select name="recurrence">
+                                        <option value="NONE">
+                                            なし
+                                        </option>
+                                        <option value="MONTHLY">
+                                            毎月
+                                        </option>
+                                        <option value="YEARLY">
+                                            毎年
+                                        </option>
+                                    </select>
+                                </label>
+                                <p class="form-error" role="alert">
+                                </p>
+                                <div class="form-actions">
+                                    <button type="submit">
+                                        保存する
+                                    </button>
+                                    <button type="button" class="quiet" data-reset>
+                                        入力をリセット
+                                    </button>
+                                </div>
+                            </form>
+                        </section>
+                        <section class="panel">
+                            <h2>
+                                支出・購入予定の一覧
+                            </h2>
+                            <label>
+                                推しで絞り込む
+                                <select id="money-favorite-filter" data-favorite-select data-optional>
+                                </select>
+                            </label>
+                            <div id="money-list">
+                            </div>
+                        </section>
+                    </div>
+                </section>
+</body>
+</html>

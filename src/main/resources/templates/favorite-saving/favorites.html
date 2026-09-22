@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>推し一覧 | Saving Favorite</title>
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="app-body">
+<section th:fragment="content" data-screen="favorites" hidden>
+                    <div class="page-heading">
+                        <div>
+                            <p class="eyebrow">
+                                MY FAVORITES
+                            </p>
+                            <h1>
+                                推し一覧
+                            </h1>
+                            <p class="muted">
+                                いくつもの「推し」を、あなたらしく。
+                            </p>
+                        </div>
+                        <button id="favorite-add" class="primary-link" type="button">
+                            推しを追加
+                        </button>
+                    </div>
+                    <section id="favorite-editor" class="panel narrow-panel" hidden>
+                        <h2 id="favorite-form-title">
+                            推しを登録
+                        </h2>
+                        <form id="favorite-form">
+                            <input type="hidden" name="id">
+                            <label>
+                                推しの名前
+                                <input name="name" required maxlength="50" placeholder="アーティストやキャラクターの名前">
+                            </label>
+                            <label>
+                                アイコンを設定
+                                <input class="image-upload-input" aria-label="アイコン画像を上げる" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                                <small class="muted">
+                                    2MB以下の画像を選択してください。
+                                </small>
+                                <img class="image-preview" data-preview alt="推しのアイコンプレビュー" hidden>
+                                <button type="button" class="quiet image-adjust-button" data-adjust-image hidden>画像を微調整</button>
+                            </label>
+                            <label>
+                                毎月の予算（任意・円）
+                                <input name="monthlyBudget" type="number" min="0" max="99999999" step="0.01" placeholder="例：10000">
+                            </label>
+                            <input type="hidden" name="imageUrl">
+                            <p class="form-error" role="alert">
+                            </p>
+                            <div class="form-actions">
+                                <button type="submit">
+                                    保存する
+                                </button>
+                                <button type="button" class="quiet" data-reset>
+                                    入力をリセット
+                                </button>
+                            </div>
+                        </form>
+                    </section>
+                    <div id="favorite-cards" class="favorites-grid">
+                    </div>
+                </section>
+</body>
+</html>

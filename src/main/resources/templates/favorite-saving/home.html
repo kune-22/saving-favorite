@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HOME | Saving Favorite</title>
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="app-body">
+<section th:fragment="content" data-screen="home">
+                    <div class="page-heading">
+                        <div>
+                            <p class="eyebrow">
+                                MY DAYS, MY FAVORITES
+                            </p>
+                            <h1>
+                                今日も、推しと一緒に。
+                            </h1>
+                            <p class="muted" id="today-label">
+                            </p>
+                        </div>
+                        <a class="primary-link" href="/schedule">
+                            ＋ 予定を登録
+                        </a>
+                    </div>
+                    <div class="stats-grid" id="home-stats">
+                    </div>
+                    <div class="home-grid">
+                        <section class="panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <p class="eyebrow">
+                                        CALENDAR
+                                    </p>
+                                    <h2>
+                                        推し活カレンダー
+                                    </h2>
+                                </div>
+                                <a href="/schedule">
+                                    日程管理へ →
+                                </a>
+                            </div>
+                            <div data-calendar>
+                            </div>
+                        </section>
+                        <section class="panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <p class="eyebrow">
+                                        MY FAVORITES
+                                    </p>
+                                    <h2>
+                                        推し一覧
+                                    </h2>
+                                </div>
+                                <a href="/favorite-new" aria-label="推しを登録する">
+                                    ＋
+                                </a>
+                            </div>
+                            <div id="home-favorites">
+                            </div>
+                        </section>
+                    </div>
+                    <section class="panel">
+                        <div class="panel-heading">
+                            <div>
+                                <p class="eyebrow">
+                                    MY COLLECTION
+                                </p>
+                                <h2>
+                                    所持グッズ
+                                </h2>
+                            </div>
+                            <a href="/inventory">
+                                登録・管理へ →
+                            </a>
+                        </div>
+                        <p class="muted">
+                            カテゴリを開くと、登録したグッズを確認できます。
+                        </p>
+                        <div id="home-inventory">
+                        </div>
+                    </section>
+                </section>
+</body>
+</html>

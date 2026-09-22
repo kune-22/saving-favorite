@@ -8,6 +8,12 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -27,13 +33,15 @@ public class AppApi {
     private static final Pattern CARD = Pattern.compile("<div[^>]*class=\\\"[^\\\"]*card-container[^\\\"]*\\\"[\\s\\S]*?<img[^>]+(?:src|data-src|data-lazy-src)=\\\"([^\\\"]+)\\\"[\\s\\S]*?<h3[^>]*class=\\\"[^\\\"]*card-title[^\\\"]*\\\"[^>]*>([\\s\\S]*?)</h3>[\\s\\S]*?<span[^>]*class=\\\"[^\\\"]*card-price[^\\\"]*\\\"[^>]*>([\\s\\S]*?)</span>", Pattern.CASE_INSENSITIVE);
     private static final Pattern GOODS_CARD = Pattern.compile("<a[^>]+class=\\\"[^\\\"]*js-enhanced-ecommerce-image[^\\\"]*\\\"[^>]*>[\\s\\S]*?<img[^>]+(?:src|data-src)=\\\"([^\\\"]+)\\\"[\\s\\S]*?</a>[\\s\\S]*?<a[^>]+class=\\\"[^\\\"]*js-enhanced-ecommerce-goods-name[^\\\"]*\\\"[^>]*>([\\s\\S]*?)</a>[\\s\\S]{0,2500}?class=\\\"[^\\\"]*js-enhanced-ecommerce-goods-price[^\\\"]*\\\"[^>]*>([\\s\\S]*?)</", Pattern.CASE_INSENSITIVE);
     private static final Pattern GOODS_IMAGE = Pattern.compile("<img[^>]+(?:src|data-src|data-lazy-src)=\\\"([^\\\"]*(?:/img/goods/|/goods/)[^\\\"]*)\\\"", Pattern.CASE_INSENSITIVE);
+    private static final ObjectMapper JSON = new ObjectMapper();
     private final UserService users;
     private final FavoriteRepository favorites;
     private final FavoriteItemRepository items;
     private final CalendarEventRepository events;
     private final ProductScrapingService productScraping;
-    public AppApi(UserService users, FavoriteRepository favorites, FavoriteItemRepository items, CalendarEventRepository events, ProductScrapingService productScraping) {
-        this.users = users; this.favorites = favorites; this.items = items; this.events = events; this.productScraping = productScraping;
+    private final BrowserRenderingService browserRendering;
+    public AppApi(UserService users, FavoriteRepository favorites, FavoriteItemRepository items, CalendarEventRepository events, ProductScrapingService productScraping, BrowserRenderingService browserRendering) {
+        this.users = users; this.favorites = favorites; this.items = items; this.events = events; this.productScraping = productScraping; this.browserRendering = browserRendering;
     }
     public record FavoriteInput(String name, String description, BigDecimal monthlyBudget, String imageUrl, Integer imageSize) {}
     public record ItemInput(Long favoriteId, String name, String category, BigDecimal price, Integer quantity,
@@ -63,6 +71,15 @@ public class AppApi {
             String html = productScraping.fetchHtml(uri);
             html = productScraping.fetchListingHtml(uri, html);
             List<ProductMetadata> products = extractProducts(html, uri);
+            boolean publicProductLinksPresent = Jsoup.parse(html).select("a[href*='/products/']").size() > 0;
+            boolean productPath = uri.getPath() != null && uri.getPath().contains("/products/");
+            if (products.isEmpty() || (!publicProductLinksPresent && !productPath)) {
+                String rendered = browserRendering.fetchRenderedHtml(uri);
+                if (!rendered.isBlank()) {
+                    List<ProductMetadata> renderedProducts = extractProducts(rendered, uri);
+                    if (!renderedProducts.isEmpty()) products = renderedProducts;
+                }
+            }
             if (products.isEmpty()) bad("商品情報を見つけられませんでした。商品ページのURLを確認してください。");
             return new MetadataView(products.get(0), products.size() > 1 ? products : List.of());
         } catch (ResponseStatusException e) { throw e; } catch (Exception e) { throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "商品ページを取得できませんでした。"); }
@@ -70,18 +87,159 @@ public class AppApi {
 
     private static List<ProductMetadata> extractProducts(String html, URI base) {
         String page = decode(html);
+        Document document = Jsoup.parse(page, base.toString());
         Map<String,String> meta = new HashMap<>(); Matcher mm = META.matcher(page); while (mm.find()) { Matcher km = META_KEY.matcher(mm.group()); Matcher cm = META_CONTENT.matcher(mm.group()); if (km.find() && cm.find()) meta.put(km.group(1).toLowerCase(Locale.ROOT), decode(cm.group(1))); }
         List<ProductMetadata> result = new ArrayList<>(); Matcher cards = CARD.matcher(page); while (cards.find()) { Map<String,String> values = new HashMap<>(); values.put("name", stripMarkup(cards.group(2))); values.put("image", cards.group(1)); values.put("price", cards.group(3)); addProduct(result, values, base); }
         Matcher goodsCards = GOODS_CARD.matcher(page); while (goodsCards.find()) { Map<String,String> values = new HashMap<>(); values.put("name", stripMarkup(goodsCards.group(2))); values.put("image", goodsCards.group(1)); values.put("price", stripMarkup(goodsCards.group(3))); addProduct(result, values, base); }
-        Matcher jm = Pattern.compile("\\\"@type\\\"\\s*:\\s*\\\"Product\\\"[\\s\\S]{0,1600}", Pattern.CASE_INSENSITIVE).matcher(page);
-        while (jm.find()) { Matcher vm = JSON_VALUE.matcher(jm.group()); Map<String,String> values = new HashMap<>(); while (vm.find()) values.putIfAbsent(vm.group(1).toLowerCase(Locale.ROOT), decode(vm.group(2))); Matcher pm = JSON_PRICE.matcher(jm.group()); if (pm.find()) values.putIfAbsent("price", pm.group(1)); addProduct(result, values, base); }
-        if (result.isEmpty()) { Map<String,String> values = new HashMap<>(); String title = meta.getOrDefault("og:title", meta.getOrDefault("twitter:title", "")); Matcher h1 = H1.matcher(page); if (title.isBlank() && h1.find()) title = h1.group(1).replaceAll("<[^>]+>", "").trim(); values.put("name", title); String image = meta.getOrDefault("og:image", ""); if (image.isBlank()) { Matcher goodsImage = GOODS_IMAGE.matcher(page); if (goodsImage.find()) image = goodsImage.group(1); } values.put("image", image); String amount = meta.getOrDefault("product:price:amount", ""); if (amount.isBlank()) { Matcher yen = YEN.matcher(page); if (yen.find()) amount = yen.group(1).replace(",", ""); } values.put("price", amount); values.put("category", meta.getOrDefault("product:category", "")); addProduct(result, values, base); }
+        extractShopifyProducts(document, result, base);
+        extractItemPropProducts(document, result, base);
+        extractJsonLdProducts(document, result, base);
+        extractEmbeddedJsonProducts(document, result, base);
+        boolean listingPage = !document.select("a[href*='/products/']").isEmpty();
+        if (result.isEmpty() && !listingPage) { Map<String,String> values = new HashMap<>(); String title = meta.getOrDefault("og:title", meta.getOrDefault("twitter:title", "")); Matcher h1 = H1.matcher(page); if (title.isBlank() && h1.find()) title = h1.group(1).replaceAll("<[^>]+>", "").trim(); if (!isGenericTitle(title)) { values.put("name", title); String image = meta.getOrDefault("og:image", ""); if (image.isBlank()) { Matcher goodsImage = GOODS_IMAGE.matcher(page); if (goodsImage.find()) image = goodsImage.group(1); } values.put("image", image); String amount = meta.getOrDefault("product:price:amount", ""); if (amount.isBlank()) { Matcher yen = YEN.matcher(page); if (yen.find()) amount = yen.group(1).replace(",", ""); } values.put("price", amount); values.put("category", meta.getOrDefault("product:category", "")); addProduct(result, values, base); } }
         return result;
+    }
+
+    private static void extractShopifyProducts(Document document, List<ProductMetadata> result, URI base) {
+        for (Element card : document.select(".product-card-wrapper, .card-wrapper.product-card-wrapper")) {
+            Element link = card.select("a[href*='/products/']").first();
+            Element name = card.select(".card__heading a, .card__heading, [class*=product-title]").first();
+            Element image = card.select("img").first();
+            Element price = card.select(".price-item--sale, .price-item--regular, .price-item").first();
+            if (link == null || name == null) continue;
+            Map<String, String> values = new HashMap<>();
+            values.put("name", name.text());
+            if (image != null) values.put("image", attributeValue(image, "src", "data-src", "data-original"));
+            if (price != null) values.put("price", price.text());
+            addProduct(result, values, base);
+        }
+    }
+
+    private static boolean isGenericTitle(String title) {
+        String normalized = title == null ? "" : title.trim().toLowerCase(Locale.ROOT);
+        return normalized.isBlank() || normalized.equals("default title") || normalized.equals("home")
+                || normalized.equals("shopify") || normalized.contains("official store") && !normalized.contains("product");
+    }
+
+    /** Microdata/RDFa と link/meta の属性から商品情報を抽出する。 */
+    private static void extractItemPropProducts(Document document, List<ProductMetadata> result, URI base) {
+        Elements productNodes = document.select("[itemscope][itemtype*=Product], [itemtype*=Product]");
+        if (productNodes.isEmpty() && !document.select("[itemprop=name], [itemprop=price], link[itemprop=image]").isEmpty()) productNodes = new Elements(document);
+        for (Element product : productNodes) {
+            Map<String, String> values = new HashMap<>();
+            Element name = product.select("[itemprop=name]").first();
+            Element image = product.select("[itemprop=image], link[rel=image_src], link[itemprop=image]").first();
+            Element price = product.select("[itemprop=price], [itemprop=lowPrice]").first();
+            Element category = product.select("[itemprop=category]").first();
+            if (name != null) values.put("name", elementValue(name));
+            if (image != null) values.put("image", attributeValue(image, "href", "src", "content"));
+            if (price != null) values.put("price", attributeValue(price, "content", "value"));
+            if (category != null) values.put("category", elementValue(category));
+            addProduct(result, values, base);
+        }
+
+        // 商品画像を <link href="..."> に持つストアにも対応する。
+        if (result.isEmpty()) {
+            Map<String, String> values = new HashMap<>();
+            Element title = document.select("meta[property=og:title], meta[name=twitter:title], link[itemprop=name]").first();
+            Element image = document.select("link[rel=image_src], link[itemprop=image], link[rel~=image]").first();
+            Element price = document.select("meta[property='product:price:amount'], meta[itemprop=price], link[itemprop=price]").first();
+            if (title != null) values.put("name", attributeValue(title, "content", "href"));
+            if (image != null) values.put("image", attributeValue(image, "href", "content"));
+            if (price != null) values.put("price", attributeValue(price, "content", "href"));
+            addProduct(result, values, base);
+        }
+    }
+
+    /** schema.org Product のJSON-LDを、単体・配列・@graphのいずれでも読む。 */
+    private static void extractJsonLdProducts(Document document, List<ProductMetadata> result, URI base) {
+        for (Element script : document.select("script[type=application/ld+json]")) {
+            try { collectJsonProducts(JSON.readTree(script.data()), result, base); }
+            catch (Exception ignored) { /* 壊れたJSON-LDは他の抽出方法へ進む */ }
+        }
+    }
+
+    /** Next.js等が script[type=application/json] に埋め込む商品情報を読む。 */
+    private static void extractEmbeddedJsonProducts(Document document, List<ProductMetadata> result, URI base) {
+        for (Element script : document.select("script#__NEXT_DATA__, script[type=application/json]")) {
+            try { collectEmbeddedProducts(JSON.readTree(script.data()), result, base); }
+            catch (Exception ignored) { /* ページ内の別用途JSONは無視する */ }
+        }
+    }
+
+    private static void collectEmbeddedProducts(JsonNode node, List<ProductMetadata> result, URI base) {
+        if (node == null || node.isNull()) return;
+        if (node.isArray()) { node.forEach(item -> collectEmbeddedProducts(item, result, base)); return; }
+        if (!node.isObject()) return;
+
+        String name = firstText(node, "itemName", "productName", "name", "title");
+        String price = firstText(node, "sellPrice", "price", "priceAmount", "amount");
+        String image = firstText(node, "imageUrl", "image", "thumbnailUrl", "thumbnail");
+        if (!name.isBlank() && !price.isBlank() && price.matches(".*[0-9].*")) {
+            Map<String, String> values = new HashMap<>();
+            values.put("name", name);
+            values.put("price", price);
+            values.put("image", image);
+            values.put("category", firstText(node, "category", "categoryName"));
+            addProduct(result, values, base);
+        }
+        node.elements().forEachRemaining(child -> collectEmbeddedProducts(child, result, base));
+    }
+
+    private static String firstText(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value == null || value.isNull()) continue;
+            if (value.isArray() && value.size() > 0) value = value.get(0);
+            if (value.isValueNode()) {
+                String text = value.asText("").trim();
+                if (!text.isBlank()) return text;
+            }
+            if (value.isObject()) {
+                String nested = firstText(value, "url", "src", "original", "value");
+                if (!nested.isBlank()) return nested;
+            }
+        }
+        return "";
+    }
+
+    private static void collectJsonProducts(JsonNode node, List<ProductMetadata> result, URI base) {
+        if (node == null || node.isNull()) return;
+        if (node.isArray()) { node.forEach(item -> collectJsonProducts(item, result, base)); return; }
+        if (!node.isObject()) return;
+        JsonNode graph = node.get("@graph");
+        if (graph != null) collectJsonProducts(graph, result, base);
+        String type = node.path("@type").asText("");
+        if (type.equalsIgnoreCase("Product") || type.equalsIgnoreCase("ProductGroup")) {
+            Map<String, String> values = new HashMap<>();
+            values.put("name", node.path("name").asText(""));
+            values.put("category", node.path("category").asText(""));
+            JsonNode image = node.get("image");
+            if (image != null) values.put("image", image.isArray() && image.size() > 0 ? image.get(0).asText("") : image.asText(""));
+            JsonNode offers = node.get("offers");
+            if (offers != null && offers.isArray() && offers.size() > 0) offers = offers.get(0);
+            if (offers != null) values.put("price", offers.path("price").asText(offers.path("lowPrice").asText("")));
+            addProduct(result, values, base);
+        }
+    }
+
+    private static String elementValue(Element element) {
+        return attributeValue(element, "content", "value", "href", "src").isBlank() ? element.text() : attributeValue(element, "content", "value", "href", "src");
+    }
+
+    private static String attributeValue(Element element, String... attributes) {
+        for (String attribute : attributes) if (element.hasAttr(attribute)) return element.attr(attribute);
+        return "";
     }
     private static void addProduct(List<ProductMetadata> result, Map<String,String> values, URI base) {
         String name = values.getOrDefault("name", "").trim(); if (name.isEmpty()) return; BigDecimal price = null; try { if (!values.getOrDefault("price", "").isBlank()) price = new BigDecimal(values.get("price").replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
         String image = decode(values.getOrDefault("image", "").trim()); if (!image.isBlank()) try { image = base.resolve(image).toString(); } catch (Exception ignored) { image = ""; }
-        result.add(new ProductMetadata(name, image, price, values.getOrDefault("category", "").trim()));
+        String category = values.getOrDefault("category", "").trim();
+        BigDecimal parsedPrice = price;
+        if (result.stream().anyMatch(existing -> existing.name().equals(name)
+                && (existing.price() == null ? parsedPrice == null
+                : parsedPrice != null && parsedPrice.compareTo(existing.price()) == 0))) return;
+        result.add(new ProductMetadata(name, image, price, category));
     }
     private static String decode(String value) { return value.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&yen;", "¥"); }
     private static String stripMarkup(String value) { return decode(value.replaceAll("<[^>]+>", "").replaceAll("\\s+", " ")).trim(); }

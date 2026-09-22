@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>日程管理 | Saving Favorite</title>
+    <link rel="stylesheet" th:href="@{/css/site.css}">
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="app-body">
+<section th:fragment="content" data-screen="schedule" hidden>
+                    <div class="page-heading">
+                        <div>
+                            <p class="eyebrow">
+                                SCHEDULE
+                            </p>
+                            <h1>
+                                日程管理
+                            </h1>
+                            <p class="muted">
+                                イベントも、期間限定のコラボも。大切な日をひとつに。
+                            </p>
+                        </div>
+                    </div>
+                    <section class="panel">
+                        <div data-calendar>
+                        </div>
+                    </section>
+                    <div class="editor-grid">
+                        <section class="panel">
+                            <h2 id="event-form-title">
+                                予定を登録
+                            </h2>
+                            <form id="event-form">
+                                <input type="hidden" name="id">
+                                <label>
+                                    予定の名前
+                                    <input name="title" required maxlength="100" placeholder="ライブ、コラボカフェなど">
+                                </label>
+                                <label>
+                                    推し
+                                    <select name="favoriteId" data-favorite-select data-optional>
+                                    </select>
+                                </label>
+                                <label>
+                                    種類
+                                    <select name="kind">
+                                        <option>
+                                            イベント
+                                        </option>
+                                        <option>
+                                            コラボ
+                                        </option>
+                                        <option>
+                                            グッズ発売
+                                        </option>
+                                        <option>
+                                            配信
+                                        </option>
+                                        <option>
+                                            その他
+                                        </option>
+                                    </select>
+                                </label>
+                                <div class="field-row">
+                                    <label>
+                                        開始日
+                                        <input name="startDate" type="date" required>
+                                    </label>
+                                    <label>
+                                        終了日
+                                        <input name="endDate" type="date" required>
+                                    </label>
+                                </div>
+                                <label>
+                                    開始・終了の何日前から知らせる？
+                                    <select name="reminderDays">
+                                        <option value="0">
+                                            当日
+                                        </option>
+                                        <option value="1">
+                                            1日前
+                                        </option>
+                                        <option value="3" selected>
+                                            3日前
+                                        </option>
+                                        <option value="7">
+                                            7日前
+                                        </option>
+                                        <option value="14">
+                                            14日前
+                                        </option>
+                                        <option value="30">
+                                            30日前
+                                        </option>
+                                    </select>
+                                </label>
+                                <label>
+                                    メモ
+                                    <textarea name="notes" maxlength="1000" rows="3">
+                                    </textarea>
+                                </label>
+                                <p class="form-error" role="alert">
+                                </p>
+                                <div class="form-actions">
+                                    <button type="submit">
+                                        保存する
+                                    </button>
+                                    <button type="button" class="quiet" data-reset>
+                                        入力をリセット
+                                    </button>
+                                </div>
+                            </form>
+                        </section>
+                        <section class="panel">
+                            <h2>
+                                登録した予定
+                            </h2>
+                            <div id="event-list">
+                            </div>
+                        </section>
+                    </div>
+                </section>
+</body>
+</html>
