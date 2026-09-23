@@ -31,4 +31,5 @@ data/
 .classpath
 .project
 .settings/
-.fonts/
+# Local font assets (not distributed in the repository)
+/src/main/resources/static/fonts/
