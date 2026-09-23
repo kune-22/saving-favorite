@@ -29,7 +29,7 @@
                         <h2 id="favorite-form-title">
                             推しを登録
                         </h2>
-                        <form id="favorite-form">
+                        <form id="favorite-form" data-direct-image>
                             <input type="hidden" name="id">
                             <label>
                                 推しの名前
@@ -39,7 +39,7 @@
                                 アイコンを設定
                                 <input class="image-upload-input" aria-label="アイコン画像を上げる" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
                                 <small class="muted">
-                                    2MB以下の画像を選択してください。
+                                    2MB以下の画像を選択してください。設定後に「画像を微調整」でアイコンの範囲を調整できます。
                                 </small>
                                 <img class="image-preview" data-preview alt="推しのアイコンプレビュー" hidden>
                                 <button type="button" class="quiet image-adjust-button" data-adjust-image hidden>画像を微調整</button>
@@ -61,6 +61,7 @@
                             </div>
                         </form>
                     </section>
+                    <p id="favorite-action-error" class="form-error" role="alert" hidden></p>
                     <div id="favorite-cards" class="favorites-grid">
                     </div>
                 </section>

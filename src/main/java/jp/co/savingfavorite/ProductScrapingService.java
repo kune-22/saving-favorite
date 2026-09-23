@@ -119,74 +119,26 @@ public class ProductScrapingService {
                 }
             }
         }
-        // Some catalog pages expose the complete result set by increasing the
-        // page-size query on the public page itself (for example, ?sz=200).
-        // Try that first so lazy "show more" grids do not leave products out.
-        if (initialCards > 0 && (base.getQuery() == null || !base.getQuery().matches(".*(?:^|&)sz=[0-9]+.*"))) {
-            URI expandedBase = URI.create(base + (base.getQuery() == null ? "?sz=200" : "&sz=200"));
-            try {
-                String expandedHtml = fetchHtml(expandedBase);
-                int expandedCards = countCards(expandedHtml);
-                Integer total = totalProducts(expandedHtml);
-                if (expandedCards > initialCards && (total == null || expandedCards >= total)) return expandedHtml;
-            } catch (Exception ignored) {
-                // Continue with the store's normal pagination below.
-            }
-        }
         StringBuilder all = new StringBuilder(initial);
         String current = initial;
-        URI currentUri = base;
-        // Continue until the endpoint returns no cards. The guard allows
-        // catalogs with thousands of products while preventing endless loops.
+        java.util.Set<URI> visited = new java.util.HashSet<>();
+        visited.add(base);
         for (int page = 0; page < 200; page++) {
-            Matcher matcher = MORE.matcher(current);
-            URI next;
-            if (matcher.find()) {
-                String link = matcher.group(1).replace("&amp;", "&");
-
-                // Nijisanji's listing endpoint supports a larger page size. The
-                // initial document contains only 12 cards even when the listing
-                // has many more products, so request the complete first grid in
-                // one response before falling back to the site's "more" URL.
-                String expandedLink = link.replace("sz=12", "sz=200")
-                        .replace("pageNo=2", "pageNo=1")
-                        .replace("start=23", "start=0");
-                URI expanded = base.resolve(expandedLink);
-                if (isSameSecureHost(base, expanded) && !expanded.equals(base)) {
-                    try {
-                        String expandedHtml = fetchHtml(expanded);
-                        int expandedCards = countCards(expandedHtml);
-                        Integer total = totalProducts(expandedHtml);
-                        if (expandedCards > initialCards && (total == null || expandedCards >= total)) return expandedHtml;
-                    } catch (Exception ignored) {
-                        // Some stores do not support a larger page size; use
-                        // their normal pagination below in that case.
-                    }
-                }
-                next = base.resolve(link);
-            } else if (currentUri.getPath() != null && currentUri.getPath().contains("search")
-                    && currentUri.getQuery() != null && currentUri.getQuery().contains("pageNo=")) {
-                // If the response itself still exposes a paging endpoint, keep
-                // following it. This is a fallback for stores without a bulk
-                // page-size parameter.
-                String query = currentUri.getQuery();
-                Matcher pageMatcher = Pattern.compile("(?:^|&)pageNo=([0-9]+)").matcher(query);
-                if (!pageMatcher.find()) break;
-                int pageNo = Integer.parseInt(pageMatcher.group(1));
-                Matcher startMatcher = Pattern.compile("(?:^|&)start=([0-9]+)").matcher(query);
-                int start = startMatcher.find() ? Integer.parseInt(startMatcher.group(1)) : Math.max(0, pageNo * 12 - 1);
-                String nextQuery = query.replace("pageNo=" + pageNo, "pageNo=" + (pageNo + 1))
-                        .replace("start=" + start, "start=" + (start + 12));
-                next = new URI(currentUri.getScheme(), currentUri.getAuthority(), currentUri.getPath(), nextQuery, null);
-            } else break;
-            if (!isSameSecureHost(base, next)) break;
+            org.jsoup.nodes.Element more = org.jsoup.Jsoup.parse(current)
+                    .selectFirst(".js-show-more-ajax[data-url]");
+            if (more == null || more.attr("data-url").isBlank()) return all.toString();
+            URI next = base.resolve(more.attr("data-url"));
+            if (!isSameSecureHost(base, next) || !visited.add(next)) {
+                throw new IllegalStateException("一覧の続きが取得できませんでした。");
+            }
             String fetched = fetchHtml(next);
-            if (fetched.isBlank() || fetched.equals(current) || !fetched.contains("card-container")) break;
+            if (fetched.equals(current) || countCards(fetched) == 0) {
+                throw new IllegalStateException("一覧の続きに商品が見つかりませんでした。");
+            }
             all.append(fetched);
             current = fetched;
-            currentUri = next;
         }
-        return all.toString();
+        throw new IllegalStateException("一覧が取得上限を超えました。条件を絞ってください。");
     }
 
     private String fetchShopifyPages(URI base, String initial) throws Exception {

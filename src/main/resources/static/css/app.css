@@ -614,6 +614,8 @@
 .image-upload-button { display:block; width:max-content; margin-top:7px; padding:6px 11px; border:1px solid var(--purple); border-radius:8px; background:var(--purple); color:#fff; font:inherit; font-size:13px; font-weight:700; cursor:pointer; transition:filter .2s ease, transform .2s ease; }
 .image-upload-button:hover { filter:brightness(1.08); transform:translateY(-1px); }
 .image-adjust-button { margin-top:8px; padding:6px 11px!important; font-size:13px!important; }
+.image-change-button { display:none; margin-top:8px; padding:6px 11px!important; font-size:13px!important; }
+label:has([data-preview]:not([hidden])) .image-change-button { display:inline-block; }
 .metadata-card { display:flex; align-items:center; gap:14px; width:100%!important; margin:10px 0!important; padding:12px!important; background:#fff!important; color:var(--ink)!important; border:1px solid var(--line); text-align:left; }
 .metadata-card.selected { border-color:var(--purple); box-shadow:0 0 0 2px #7462b533; background:#f5f2ff!important; }
 .metadata-card img { width:64px; height:64px; border-radius:9px; object-fit:cover; background:#f1f1f8; }

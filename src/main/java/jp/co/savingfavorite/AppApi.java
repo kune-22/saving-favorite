@@ -71,9 +71,7 @@ public class AppApi {
             String html = productScraping.fetchHtml(uri);
             html = productScraping.fetchListingHtml(uri, html);
             List<ProductMetadata> products = extractProducts(html, uri);
-            boolean publicProductLinksPresent = Jsoup.parse(html).select("a[href*='/products/']").size() > 0;
-            boolean productPath = uri.getPath() != null && uri.getPath().contains("/products/");
-            if (products.isEmpty() || (!publicProductLinksPresent && !productPath)) {
+            if (products.isEmpty()) {
                 String rendered = browserRendering.fetchRenderedHtml(uri);
                 if (!rendered.isBlank()) {
                     List<ProductMetadata> renderedProducts = extractProducts(rendered, uri);
@@ -88,6 +86,23 @@ public class AppApi {
     private static List<ProductMetadata> extractProducts(String html, URI base) {
         String page = decode(html);
         Document document = Jsoup.parse(page, base.toString());
+        // 商品詳細は関連商品カードより優先し、対象商品の価格欄から読む。
+        Element detail = document.selectFirst(".product-detail[data-pid]");
+        if (detail != null) {
+            Element title = detail.selectFirst("h1.heading");
+            Element price = detail.selectFirst(".product-price-text .text-price");
+            if (title != null && price != null) {
+                Map<String, String> values = new HashMap<>();
+                values.put("name", title.text());
+                Matcher amount = Pattern.compile("[0-9][0-9,]*(?:\\.[0-9]+)?").matcher(price.text());
+                if (amount.find()) values.put("price", amount.group().replace(",", ""));
+                Element image = document.selectFirst("meta[property=og:image]");
+                if (image != null) values.put("image", image.attr("content"));
+                List<ProductMetadata> product = new ArrayList<>();
+                addProduct(product, values, base);
+                if (!product.isEmpty()) return product;
+            }
+        }
         Map<String,String> meta = new HashMap<>(); Matcher mm = META.matcher(page); while (mm.find()) { Matcher km = META_KEY.matcher(mm.group()); Matcher cm = META_CONTENT.matcher(mm.group()); if (km.find() && cm.find()) meta.put(km.group(1).toLowerCase(Locale.ROOT), decode(cm.group(1))); }
         List<ProductMetadata> result = new ArrayList<>(); Matcher cards = CARD.matcher(page); while (cards.find()) { Map<String,String> values = new HashMap<>(); values.put("name", stripMarkup(cards.group(2))); values.put("image", cards.group(1)); values.put("price", cards.group(3)); addProduct(result, values, base); }
         Matcher goodsCards = GOODS_CARD.matcher(page); while (goodsCards.find()) { Map<String,String> values = new HashMap<>(); values.put("name", stripMarkup(goodsCards.group(2))); values.put("image", goodsCards.group(1)); values.put("price", stripMarkup(goodsCards.group(3))); addProduct(result, values, base); }
@@ -133,7 +148,7 @@ public class AppApi {
             Element category = product.select("[itemprop=category]").first();
             if (name != null) values.put("name", elementValue(name));
             if (image != null) values.put("image", attributeValue(image, "href", "src", "content"));
-            if (price != null) values.put("price", attributeValue(price, "content", "value"));
+            if (price != null) values.put("price", elementValue(price));
             if (category != null) values.put("category", elementValue(category));
             addProduct(result, values, base);
         }
@@ -233,7 +248,7 @@ public class AppApi {
     }
     private static void addProduct(List<ProductMetadata> result, Map<String,String> values, URI base) {
         String name = values.getOrDefault("name", "").trim(); if (name.isEmpty()) return; BigDecimal price = null; try { if (!values.getOrDefault("price", "").isBlank()) price = new BigDecimal(values.get("price").replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
-        String image = decode(values.getOrDefault("image", "").trim()); if (!image.isBlank()) try { image = base.resolve(image).toString(); } catch (Exception ignored) { image = ""; }
+        String image = decode(values.getOrDefault("image", "").trim()); if (!image.isBlank()) try { image = base.resolve(image.replace(" ", "%20")).toString(); } catch (Exception ignored) { image = ""; }
         String category = values.getOrDefault("category", "").trim();
         BigDecimal parsedPrice = price;
         if (result.stream().anyMatch(existing -> existing.name().equals(name)

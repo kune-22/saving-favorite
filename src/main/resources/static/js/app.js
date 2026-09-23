@@ -69,10 +69,20 @@
         }
     });
     // ルートに応じて画面を表示する
+    let previousScreen = null;
     function navigate() {
         const route = location.pathname.replace(/^\//,'');
         const page = names[route] ? route : (location.hash.slice(1) || 'home');
         const selected = page === 'favorite-new' ? 'favorites' : (names[page] ? page : 'home');
+        if (previousScreen && selected !== previousScreen) {
+            const previous=$$('[data-screen]').find(screen=>screen.dataset.screen===previousScreen);
+            if (previous) {
+                $$('form',previous).forEach(form=>resetForm(form));
+                $$('#favorite-editor, #inventory-editor',previous).forEach(editor=>editor.hidden=true);
+                $$('[data-metadata-error], .form-error',previous).forEach(error=>error.textContent='');
+            }
+        }
+        previousScreen = selected;
         $$('[data-screen]').forEach(el => el.hidden = el.dataset.screen !== selected);
         $$('[data-page]').forEach(el => { const active = el.dataset.page === selected; el.classList.toggle('active', active); if (active) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
         $('#breadcrumb').textContent = names[selected];
@@ -98,7 +108,7 @@
         const headers = {'Accept':'application/json'};
         if (body) headers['Content-Type'] = 'application/json';
         headers[$('meta[name="csrf-header"]').content] = $('meta[name="csrf-token"]').content;
-        const response = await fetch(`api/${path}`, {method, headers, credentials:'same-origin', body:body ? JSON.stringify(body) : undefined});
+        const response = await fetch(`/api/${path}`, {method, headers, credentials:'same-origin', body:body ? JSON.stringify(body) : undefined});
         if (response.status === 401 || response.redirected) { location.assign('register?mode=login'); throw new Error('ログインし直してください。'); }
         if (!response.ok) { let error; try { error = await response.json(); } catch (_) {} throw new Error(error?.message || (response.status === 403 ? '有効期限が切れました。画面を再読み込みしてください。' : '保存できませんでした。入力内容や通信状態を確認してください。')); }
         return response.headers.get('content-type')?.includes('application/json') ? response.json() : null;
@@ -280,7 +290,7 @@
         if (product.name) form.elements.name.value = product.name;
         if (product.category && form.elements.category) form.elements.category.value = product.category;
         const price = Number(product.price);
-        if (Number.isFinite(price) && form.elements.price) form.elements.price.value = String(price);
+        if (product.price != null && Number.isFinite(price) && form.elements.price) form.elements.price.value = String(price);
         if (product.imageUrl && form.elements.imageUrl) { form.elements.imageUrl.value = product.imageUrl; const preview=$('[data-preview]',form); if (preview) { preview.src=product.imageUrl; preview.hidden=false; } const upload=$('button.image-upload-button',form); if (upload) upload.hidden=true; const adjust=$('[data-adjust-image]',form); if (adjust) adjust.hidden=false; }
         if (form.elements.storeUrl) form.elements.storeUrl.value = form.elements.storeUrl.value;
         metadataDialog.close(); announce('商品情報を入力しました。');
@@ -304,6 +314,12 @@
     $$('[data-fetch-metadata]').forEach(button=>button.addEventListener('click',()=>fetchMetadata(button)));
     $$('[data-fetch-metadata-list]').forEach(button=>button.addEventListener('click',()=>fetchMetadata(button,true)));
     $('#metadata-cancel').addEventListener('click',()=>metadataDialog.close());
+    metadataDialog.addEventListener('close',()=>{
+        selectedMetadataIndexes.clear();
+        $('#metadata-products').replaceChildren();
+        $('#metadata-result-count').textContent='';
+        $('#metadata-register-selected').disabled=true;
+    });
     $('#metadata-register-back').addEventListener('click',returnToMetadataSelection);
     $('#metadata-products').addEventListener('click',e=>{ const card=e.target.closest('[data-metadata-index]'); if(!card || !metadataTargetForm)return; const index=Number(card.dataset.metadataIndex); if(selectedMetadataIndexes.has(index)) selectedMetadataIndexes.delete(index); else selectedMetadataIndexes.add(index); card.classList.toggle('selected',selectedMetadataIndexes.has(index)); card.setAttribute('aria-pressed',selectedMetadataIndexes.has(index)); updateMetadataSelectionSummary((metadataTargetForm.__metadataProducts || []).length); });
     $('#metadata-register-selected').addEventListener('click', () => {
@@ -321,6 +337,13 @@
         renderMetadataEditors();
     });
     let bulkSaving = false;
+    $('#bulk-dialog').addEventListener('close', () => {
+        if (bulkSaving) return;
+        metadataDrafts=[];
+        $('#bulk-products').replaceChildren();
+        $('#bulk-form').reset();
+        $('#bulk-error').textContent='';
+    });
     $('#bulk-close').addEventListener('click', () => { if (!bulkSaving) $('#bulk-dialog').close(); });
     $('#bulk-dialog').addEventListener('cancel', event => { if (bulkSaving) event.preventDefault(); });
     $('#bulk-form').addEventListener('submit', async event => {
@@ -370,27 +393,34 @@
     $('#inventory-add').addEventListener('click',()=>{ const editor=$('#inventory-editor'); editor.hidden=false; resetForm($('#inventory-form')); editor.scrollIntoView({block:'center',behavior:'smooth'}); setTimeout(()=>$('#inventory-form input[name="name"]').focus(),250); });
     // 登録フォームと画像切り抜き
     function resetForm(form) {
-        form.reset(); if (form.elements.id) form.elements.id.value=''; $('.form-error',form).textContent='';
+        form.reset();
+        // Hidden fields are not cleared by form.reset() after their value is changed.
+        ['id','imageUrl','membershipJoinedDate'].forEach(name=>{ if(form.elements.namedItem(name)) form.elements.namedItem(name).value=''; });
+        const error=$('.form-error',form); if(error) error.textContent='';
+        $$('[data-metadata-error]',form).forEach(box=>box.textContent='');
+        delete form.__metadataProducts;
         $$('button.image-upload-button',form).forEach(button=>{ const input=button.nextElementSibling; button.textContent=input?.getAttribute('aria-label') || '画像を上げる'; button.hidden=false; });
         $$('[data-adjust-image]',form).forEach(button=>button.hidden=true);
         $$('[data-preview]',form).forEach(preview=>{ preview.hidden=true; preview.removeAttribute('src'); });
         $$('input[type="date"][required]',form).forEach(input=>input.value=today());
         const titles={'favorite-form':['favorite-form-title','推しの登録'],'event-form':['event-form-title','予定を登録'],'money-form':['money-form-title','支出・購入予定を登録'],'inventory-form':['inventory-form-title','グッズを登録']};
         const titleInfo=titles[form.getAttribute('id')]; if (titleInfo) $('#'+titleInfo[0]).textContent=titleInfo[1];
+        if (form.id==='profile-form' && ready) {
+            form.elements.name.value=data.name || '';
+            form.elements.cash.value=data.cash ?? 0;
+            form.elements.imageUrl.value=data.imageUrl || '';
+            const preview=$('[data-preview]',form);
+            if(preview && data.imageUrl) { preview.src=data.imageUrl; preview.hidden=false; }
+            const upload=$('.image-upload-button',form); if(upload) upload.hidden=!!data.imageUrl;
+            const adjust=$('[data-adjust-image]',form); if(adjust) adjust.hidden=!data.imageUrl;
+        }
     }
     const itemEditDialog = $('#item-edit-dialog');
     let itemEditSession = null;
     function beginItemEdit(form) {
         const marker = document.createComment('item-form-position');
         form.before(marker);
-        itemEditSession = {
-            form, marker,
-            fields: [...form.elements].filter(el => el.type !== 'file').map(el => [el, el.value]),
-            preview: $('[data-preview]', form)?.getAttribute('src'),
-            hidden: $$('[data-preview], [data-adjust-image], .image-upload-button', form).map(el => [el, el.hidden]),
-            error: $('.form-error', form).textContent,
-            title: $('#money-form-title').textContent
-        };
+        itemEditSession = {form, marker};
         $('#item-edit-content').append(form);
     }
     $('#item-edit-close').addEventListener('click', () => itemEditDialog.close());
@@ -398,17 +428,16 @@
         if (!itemEditSession) return;
         const session = itemEditSession;
         session.marker.replaceWith(session.form);
-        session.fields.forEach(([el, value]) => { el.value = value; });
-        const preview = $('[data-preview]', session.form);
-        if (session.preview) preview.src = session.preview;
-        else preview.removeAttribute('src');
-        session.hidden.forEach(([el, hidden]) => { el.hidden = hidden; });
-        $('.form-error', session.form).textContent = session.error;
-        $('#money-form-title').textContent = session.title;
+        resetForm(session.form);
         updateMembershipFields(session.form);
         itemEditSession = null;
     });
     const forms=$$('#favorite-form,#event-form,#money-form,#inventory-form,#profile-form');
+    window.addEventListener('pagehide',()=>{
+        forms.forEach(form=>resetForm(form));
+        $$('dialog[open]').forEach(dialog=>dialog.close());
+        $$('#favorite-editor, #inventory-editor').forEach(editor=>editor.hidden=true);
+    });
     const membershipCategory = value => /メンバー|会費/.test(value || '');
     function updateMembershipFields(form) {
         if (!form || form.id !== 'money-form') return;
@@ -497,6 +526,11 @@
     }
     const setDirectImage=(file,button,form)=>{
         const selected=file.files[0]; if (!selected) return;
+        if (!['image/png','image/jpeg','image/webp','image/gif'].includes(selected.type) || selected.size > 2*1024*1024) {
+            announce('PNG・JPEG・WebP・GIF形式の2MB以下の画像を選択してください。',true);
+            file.value='';
+            return;
+        }
         button.textContent=selected.name;
         const reader=new FileReader();
         reader.onload=()=>{ form.elements.imageUrl.value=reader.result; const preview=$('[data-preview]',form); if (preview) { preview.src=reader.result; preview.hidden=false; } button.hidden=true; $('[data-adjust-image]',form).hidden=false; file.value=''; };
@@ -513,11 +547,18 @@
     $$('input.image-upload-input').forEach(file => {
         const button=document.createElement('button'); button.type='button'; button.className='image-upload-button'; button.textContent=file.getAttribute('aria-label') || '画像を上げる';
         file.parentNode.insertBefore(button,file); button.addEventListener('click',()=>file.click());
+        const changeButton=document.createElement('button');
+        changeButton.type='button';
+        changeButton.className='quiet image-change-button';
+        changeButton.textContent='画像を変更';
+        changeButton.addEventListener('click',()=>file.click());
+        const adjust=$('[data-adjust-image]',file.closest('label'));
+        if (adjust) adjust.before(changeButton);
         file.addEventListener('change',()=>{
             const selected=file.files[0]; if (!selected) return;
             button.textContent=selected.name;
             const form=file.closest('form');
-            if (form?.id === 'money-form' || form?.id === 'inventory-form') {
+            if (form?.hasAttribute('data-direct-image') || form?.id === 'money-form' || form?.id === 'inventory-form') {
                 setDirectImage(file,button,form);
             } else openCrop(selected,file);
         });
@@ -583,23 +624,40 @@
     $('#close-day').addEventListener('click',()=>$('#day-dialog').close());
     $('#day-add').addEventListener('click',()=>{ const form=$('#event-form'); resetForm(form); form.elements.startDate.value=$('#day-add').dataset.date; form.elements.endDate.value=$('#day-add').dataset.date; $('#day-dialog').close(); history.pushState({},'', '/schedule'); navigate(); setTimeout(()=>form.elements.title.focus(),0); });
     document.addEventListener('click',async e=>{
+        const favoriteAction=e.target.closest('[data-edit="favorites"], [data-delete="favorites"]');
+        const actionError=$('#favorite-action-error');
+        if (favoriteAction && actionError) { actionError.hidden=true; actionError.textContent=''; }
+        try {
         const move=e.target.closest('[data-month]'); if(move) { const step=Number(move.dataset.month); month=step===0?new Date(new Date().getFullYear(),new Date().getMonth(),1):new Date(month.getFullYear(),month.getMonth()+step,1); renderCalendars(); return; }
         const day=e.target.closest('[data-day]'); if(day) {openDay(day.dataset.day);return;}
         const edit=e.target.closest('[data-edit]');
         if(edit) {
-            const kind=edit.dataset.edit, record=data[kind].find(x=>x.id===Number(edit.dataset.id)); if(!record)return;
+            const kind=edit.dataset.edit, record=data[kind].find(x=>String(x.id)===edit.dataset.id);
+            if(!record) throw new Error('対象の情報が見つかりません。画面を再読み込みしてください。');
             const target=kind==='favorites'?'favorite-new':kind==='events'?'schedule':'money';
             const form=$(kind==='favorites'?'#favorite-form':kind==='events'?'#event-form':target==='inventory'?'#inventory-form':'#money-form');
             if (kind === 'items') beginItemEdit(form);
             resetForm(form); Object.entries(record).forEach(([key,value])=>{if(form.elements.namedItem(key)) form.elements.namedItem(key).value=value??'';});
             if (kind === 'items' && record.status === 'OWNED') form.elements.status.value = 'PAID';
             if (target === 'inventory') { const editor=$('#inventory-editor'); if (editor) editor.hidden=false; }
-            if (target === 'inventory' || target === 'money') { const preview=$('[data-preview]',form); if (preview) { preview.src=record.imageUrl || ''; preview.hidden=!record.imageUrl; } const adjust=$('[data-adjust-image]',form); if (adjust) adjust.hidden=!record.imageUrl; }
+            if (kind === 'items' || kind === 'favorites') {
+                const preview=$('[data-preview]',form);
+                if (preview) { preview.src=record.imageUrl || ''; preview.hidden=!record.imageUrl; }
+                const adjust=$('[data-adjust-image]',form);
+                if (adjust) adjust.hidden=!record.imageUrl;
+                const upload=$('.image-upload-button',form);
+                if (upload) upload.hidden=!!record.imageUrl;
+            }
             if (kind === 'favorites') { const editor=$('#favorite-editor'); if (editor) editor.hidden=false; }
             if (target === 'money' && membershipCategory(record.category)) form.elements.purchasedDate.value = record.membershipJoinedDate || record.purchasedDate || '';
             updateMembershipFields(form);
             const title=kind==='favorites'?'favorite-form-title':kind==='events'?'event-form-title':target==='inventory'?'inventory-form-title':'money-form-title'; $('#'+title).textContent='登録内容を編集';
             if (kind === 'items') { itemEditDialog.showModal(); return; }
+            if (kind === 'favorites') {
+                form.scrollIntoView({block:'start',behavior:'smooth'});
+                form.elements.name.focus({preventScroll:true});
+                return;
+            }
             history.pushState({},'', '/'+target); navigate(); setTimeout(()=>{form.scrollIntoView({block:'center'}); $('input:not([type="hidden"])',form).focus();},0); return;
         }
         const remove=e.target.closest('[data-delete]');
@@ -607,7 +665,20 @@
             const kind=remove.dataset.delete, message=kind==='favorites'?'この推しを削除しますか？紐づくグッズと支出も削除されます。予定は推し未指定で残ります。':'この記録を削除しますか？';
             if(!confirm(message))return;
             remove.disabled=true;
-            try {await api(`${kind}/${remove.dataset.id}`,'DELETE'); await refresh(); announce('削除しました。');} catch(error) {announce(error.message,true); remove.disabled=false;}
+            const originalText=remove.textContent;
+            remove.textContent='削除中…';
+            try {
+                await api(`${kind}/${remove.dataset.id}`,'DELETE');
+                await refresh();
+                announce('削除しました。');
+            } finally {
+                remove.disabled=false;
+                remove.textContent=originalText;
+            }
+        }
+        } catch(error) {
+            if (favoriteAction && actionError) { actionError.textContent=error.message; actionError.hidden=false; }
+            else announce(error.message,true);
         }
     });
     refresh().catch(error=>announce(error.message,true));
